@@ -1,0 +1,50 @@
+# .github/workflows/deploy.yml
+
+name: 'Deploy S3 Bucket with Terraform'
+
+# Run on pushes to the main branch
+on:
+  push:
+    branches:
+      - main
+
+# Permissions needed for AWS OIDC authentication
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::979858933388:role/GitHubActionsTerraformRole # <-- TODO: Replace with your Account ID and Role Name
+          aws-region: us-east-1 # Or your preferred region
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+
+      # In a real-world scenario, you would add a manual approval step here
+      # before running the apply command.
+
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply -auto-approve tfplan
