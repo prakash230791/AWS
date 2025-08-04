@@ -242,7 +242,7 @@ resource "aws_security_group" "ec2_sg" {
 
 resource "aws_instance" "jump_host" {
   ami                    = var.ec2_ami_id
-  instance_type          = "t2.micro" # Free tier eligible
+  instance_type          = "t3.micro" # Free tier eligible, supports UEFI
   subnet_id              = aws_subnet.main_a.id # Place in one of the subnets
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   key_name               = var.ec2_key_pair_name
