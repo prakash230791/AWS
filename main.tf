@@ -228,13 +228,6 @@ variable "ec2_ami_id" {
   default     = "ami-0922553b7b0369273" # Example: Amazon Linux 2 AMI for us-east-1 (Updated)
 }
 
-variable "ec2_key_pair_name" {
-  description = "The name of the EC2 Key Pair for SSH access"
-  type        = string
-  # IMPORTANT: Replace with your actual key pair name
-  default     = "my-ssh-key"
-}
-
 resource "aws_security_group" "ec2_sg" {
   name        = "ec2-jump-sg"
   description = "Security group for EC2 jump host"
@@ -272,7 +265,7 @@ resource "aws_instance" "jump_host" {
   instance_type          = "t3.micro" # Free tier eligible, supports UEFI
   subnet_id              = aws_subnet.main_a.id # Place in one of the subnets
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-  key_name               = var.ec2_key_pair_name
+  key_name               = aws_key_pair.ssh_key_pair.key_name
   associate_public_ip_address = true # Assign a public IP for SSH access
 
   tags = {
@@ -312,4 +305,10 @@ output "ec2_public_ip" {
 output "ec2_private_ip" {
   description = "The private IP address of the EC2 jump host"
   value       = aws_instance.jump_host.private_ip
+}
+
+output "private_key_pem" {
+  description = "The private key to SSH into the EC2 instance"
+  value       = tls_private_key.ssh_key.private_key_pem
+  sensitive   = true
 }
