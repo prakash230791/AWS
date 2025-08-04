@@ -8,6 +8,14 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    tls = {
+      source = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+    local = {
+      source = "hashicorp/local"
+      version = "~> 2.2"
+    }
   }
 }
 
@@ -76,6 +84,25 @@ resource "aws_route_table_association" "a" {
 resource "aws_route_table_association" "b" {
   subnet_id      = aws_subnet.main_b.id
   route_table_id = aws_route_table.rt.id
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+# SSH KEY RESOURCES
+# ----------------------------------------------------------------------------------------------------------------------
+
+resource "tls_private_key" "ssh_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "ssh_key_pair" {
+  key_name   = "my-ssh-key"
+  public_key = tls_private_key.ssh_key.public_key_openssh
+}
+
+resource "local_file" "private_key_pem" {
+  content  = tls_private_key.ssh_key.private_key_pem
+  filename = "my-ssh-key.pem"
 }
 
 
