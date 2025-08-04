@@ -169,6 +169,78 @@ resource "aws_db_instance" "oracle_rds" {
   }
 }
 
+resource "aws_secretsmanager_secret" "oracle_rds_password" {
+  name        = "oracle-rds-master-password"
+  description = "Master password for the Oracle RDS instance"
+}
+
+resource "aws_secretsmanager_secret_version" "oracle_rds_password_version" {
+  secret_id     = aws_secretsmanager_secret.oracle_rds_password.id
+  secret_string = random_password.master_password.result
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+# EC2 INSTANCE RESOURCES
+# ----------------------------------------------------------------------------------------------------------------------
+
+variable "ec2_ami_id" {
+  description = "The AMI ID for the EC2 instance (e.g., Amazon Linux 2)"
+  type        = string
+  default     = "ami-053b04d48d167755a" # Example: Amazon Linux 2 AMI for us-east-1
+}
+
+variable "ec2_key_pair_name" {
+  description = "The name of the EC2 Key Pair for SSH access"
+  type        = string
+  # IMPORTANT: Replace with your actual key pair name
+  # default     = "my-ssh-key"
+}
+
+resource "aws_security_group" "ec2_sg" {
+  name        = "ec2-jump-sg"
+  description = "Security group for EC2 jump host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # WARNING: Restrict this to your IP for production
+  }
+
+  # Allow outbound to RDS
+  egress {
+    from_port   = 1521
+    to_port     = 1521
+    protocol    = "tcp"
+    security_groups = [aws_security_group.rds_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"] # Allow all outbound for general use
+  }
+
+  tags = {
+    Name = "ec2-jump-sg"
+  }
+}
+
+resource "aws_instance" "jump_host" {
+  ami                    = var.ec2_ami_id
+  instance_type          = "t2.micro" # Free tier eligible
+  subnet_id              = aws_subnet.main_a.id # Place in one of the subnets
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  key_name               = var.ec2_key_pair_name
+  associate_public_ip_address = true # Assign a public IP for SSH access
+
+  tags = {
+    Name = "Oracle-RDS-Jump-Host"
+  }
+}
+
 # ----------------------------------------------------------------------------------------------------------------------
 # OUTPUTS
 # ----------------------------------------------------------------------------------------------------------------------
@@ -184,7 +256,21 @@ output "rds_port" {
 }
 
 output "db_master_password" {
-  description = "The master password for the database"
-  value       = random_password.master_password.result
-  sensitive   = true
+  description = "The master password for the database (stored in Secrets Manager)"
+  value       = aws_secretsmanager_secret.oracle_rds_password.arn
+}
+
+output "secrets_manager_secret_arn" {
+  description = "ARN of the Secrets Manager secret storing the RDS master password"
+  value       = aws_secretsmanager_secret.oracle_rds_password.arn
+}
+
+output "ec2_public_ip" {
+  description = "The public IP address of the EC2 jump host"
+  value       = aws_instance.jump_host.public_ip
+}
+
+output "ec2_private_ip" {
+  description = "The private IP address of the EC2 jump host"
+  value       = aws_instance.jump_host.private_ip
 }
