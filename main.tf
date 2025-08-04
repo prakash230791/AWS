@@ -186,7 +186,7 @@ resource "aws_secretsmanager_secret_version" "oracle_rds_password_version" {
 variable "ec2_ami_id" {
   description = "The AMI ID for the EC2 instance (e.g., Amazon Linux 2)"
   type        = string
-  default     = "ami-053b04d48d167755a" # Example: Amazon Linux 2 AMI for us-east-1
+  default     = "ami-053b04d48d167755a" # Example: Amazon Linux 2 AMI for us-east-1 (Updated)
 }
 
 variable "ec2_key_pair_name" {
