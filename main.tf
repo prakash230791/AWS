@@ -193,7 +193,7 @@ variable "ec2_key_pair_name" {
   description = "The name of the EC2 Key Pair for SSH access"
   type        = string
   # IMPORTANT: Replace with your actual key pair name
-  # default     = "my-ssh-key"
+  default     = "my-ssh-key"
 }
 
 resource "aws_security_group" "ec2_sg" {
