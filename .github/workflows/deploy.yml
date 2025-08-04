@@ -48,3 +48,19 @@ jobs:
       - name: Terraform Apply
         id: apply
         run: terraform apply -auto-approve tfplan
+
+      - name: Get Private Key Output
+        id: get_key
+        run: echo "private_key=$(terraform output -raw private_key_pem)" >> $GITHUB_OUTPUT
+
+      - name: Store EC2 Username in Secrets Manager
+        run: |
+          aws secretsmanager create-secret --name ec2-default-username --secret-string '{"username":"ec2-user"}' --region us-east-1 || \
+          aws secretsmanager put-secret-value --secret-id ec2-default-username --secret-string '{"username":"ec2-user"}' --region us-east-1
+
+      - name: Store EC2 Private Key in Secrets Manager
+        env:
+          PRIVATE_KEY: ${{ steps.get_key.outputs.private_key }}
+        run: |
+          aws secretsmanager create-secret --name ec2-private-key --secret-string "$PRIVATE_KEY" --region us-east-1 || \
+          aws secretsmanager put-secret-value --secret-id ec2-private-key --secret-string "$PRIVATE_KEY" --region us-east-1
