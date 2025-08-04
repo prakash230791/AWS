@@ -107,17 +107,25 @@ variable "allocated_storage" {
   default     = 20
 }
 
+variable "enable_rds" {
+  description = "Set to true to enable RDS deployment, false to disable"
+  type        = bool
+  default     = false
+}
+
 # ----------------------------------------------------------------------------------------------------------------------
 # DATABASE RESOURCES
 # ----------------------------------------------------------------------------------------------------------------------
 
 resource "random_password" "master_password" {
+  count            = var.enable_rds ? 1 : 0
   length           = 16
   special          = true
   override_special = "!#$%&'()*+,-./:;<=>?@[]^_`{|}~"
 }
 
 resource "aws_security_group" "rds_sg" {
+  count       = var.enable_rds ? 1 : 0
   name        = "rds-oracle-sg"
   description = "Security group for Oracle RDS"
   vpc_id      = aws_vpc.main.id
@@ -142,6 +150,7 @@ resource "aws_security_group" "rds_sg" {
 }
 
 resource "aws_db_subnet_group" "rds_subnet_group" {
+  count      = var.enable_rds ? 1 : 0
   name       = "rds-oracle-subnet-group"
   subnet_ids = [aws_subnet.main_a.id, aws_subnet.main_b.id]
 
@@ -151,6 +160,7 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
 }
 
 resource "aws_db_instance" "oracle_rds" {
+  count                = var.enable_rds ? 1 : 0
   allocated_storage    = var.allocated_storage
   storage_type         = "gp2"
   engine               = "oracle-se2" # Or "oracle-ee", "oracle-se2-cdb", "oracle-ee-cdb"
@@ -158,9 +168,9 @@ resource "aws_db_instance" "oracle_rds" {
   instance_class       = var.instance_class
   db_name              = var.db_name
   username             = var.db_username
-  password             = random_password.master_password.result
-  db_subnet_group_name = aws_db_subnet_group.rds_subnet_group.name
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  password             = random_password.master_password[0].result
+  db_subnet_group_name = aws_db_subnet_group.rds_subnet_group[0].name
+  vpc_security_group_ids = [aws_security_group.rds_sg[0].id]
   license_model        = "license-included" # Or "bring-your-own-license"
   skip_final_snapshot  = true
 
@@ -170,13 +180,15 @@ resource "aws_db_instance" "oracle_rds" {
 }
 
 resource "aws_secretsmanager_secret" "oracle_rds_password" {
+  count       = var.enable_rds ? 1 : 0
   name        = "oracle-rds-master-password"
   description = "Master password for the Oracle RDS instance"
 }
 
 resource "aws_secretsmanager_secret_version" "oracle_rds_password_version" {
-  secret_id     = aws_secretsmanager_secret.oracle_rds_password.id
-  secret_string = random_password.master_password.result
+  count         = var.enable_rds ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.oracle_rds_password[0].id
+  secret_string = random_password.master_password[0].result
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -186,7 +198,7 @@ resource "aws_secretsmanager_secret_version" "oracle_rds_password_version" {
 variable "ec2_ami_id" {
   description = "The AMI ID for the EC2 instance (e.g., Amazon Linux 2)"
   type        = string
-  default     = "ami-053b04d48d167755a" # Example: Amazon Linux 2 AMI for us-east-1 (Updated)
+  default     = "ami-053e4c278cbc5eaff" # Example: Amazon Linux 2 AMI for us-east-1 (Updated)
 }
 
 variable "ec2_key_pair_name" {
@@ -213,7 +225,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port   = 1521
     to_port     = 1521
     protocol    = "tcp"
-    security_groups = [aws_security_group.rds_sg.id]
+    security_groups = [aws_security_group.rds_sg[0].id] # Conditional access
   }
 
   egress {
@@ -247,22 +259,22 @@ resource "aws_instance" "jump_host" {
 
 output "rds_endpoint" {
   description = "The endpoint of the RDS instance"
-  value       = aws_db_instance.oracle_rds.endpoint
+  value       = var.enable_rds ? aws_db_instance.oracle_rds[0].endpoint : "RDS not deployed"
 }
 
 output "rds_port" {
   description = "The port of the RDS instance"
-  value       = aws_db_instance.oracle_rds.port
+  value       = var.enable_rds ? aws_db_instance.oracle_rds[0].port : "RDS not deployed"
 }
 
 output "db_master_password" {
   description = "The master password for the database (stored in Secrets Manager)"
-  value       = aws_secretsmanager_secret.oracle_rds_password.arn
+  value       = var.enable_rds ? aws_secretsmanager_secret.oracle_rds_password[0].arn : "RDS not deployed"
 }
 
 output "secrets_manager_secret_arn" {
   description = "ARN of the Secrets Manager secret storing the RDS master password"
-  value       = aws_secretsmanager_secret.oracle_rds_password.arn
+  value       = var.enable_rds ? aws_secretsmanager_secret.oracle_rds_password[0].arn : "RDS not deployed"
 }
 
 output "ec2_public_ip" {
