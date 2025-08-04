@@ -145,7 +145,7 @@ variable "allocated_storage" {
 variable "enable_rds" {
   description = "Set to true to enable RDS deployment, false to disable"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
