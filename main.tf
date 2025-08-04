@@ -214,10 +214,17 @@ resource "aws_db_instance" "oracle_rds" {
   }
 }
 
+resource "random_string" "secret_suffix" {
+  count   = var.enable_rds ? 1 : 0
+  length  = 8
+  special = false
+  upper   = false
+}
+
 resource "aws_secretsmanager_secret" "oracle_rds_password" {
   count       = var.enable_rds ? 1 : 0
-  name        = "oracle-rds-master-password"
-  description = "Master password for the Oracle RDS instance"
+  name        = "oracle-rds-master-password-${random_string.secret_suffix[0].result}"
+  description = "Master password for the Oracle RDS instance" 
 }
 
 resource "aws_secretsmanager_secret_version" "oracle_rds_password_version" {
