@@ -225,7 +225,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port   = 1521
     to_port     = 1521
     protocol    = "tcp"
-    security_groups = [aws_security_group.rds_sg[0].id] # Conditional access
+    security_groups = var.enable_rds ? [aws_security_group.rds_sg[0].id] : [] # Conditional access
   }
 
   egress {
