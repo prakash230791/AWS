@@ -1,0 +1,4 @@
+# Azure SQL MI → AWS Aurora PostgreSQL Migration Estimator
+# Python 3.9+
+
+PyYAML>=6.0.1
