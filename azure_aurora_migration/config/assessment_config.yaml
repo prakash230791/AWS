@@ -1,0 +1,310 @@
+# ============================================================
+# Azure SQL to AWS Aurora PostgreSQL - Migration Assessment
+# Configuration: Effort Weights, Thresholds, and Workstreams
+# ============================================================
+
+project:
+  name: "Azure SQL Managed Instance to AWS Aurora PostgreSQL Migration Estimator"
+  version: "1.0.0"
+  source: "Azure SQL Managed Instance (SQL Server Engine compatible)"
+  target: "Amazon Aurora PostgreSQL-Compatible Edition"
+  methodology: "RICE-weighted complexity scoring with workstream decomposition"
+  notes: >
+    Azure SQL Managed Instance (MI) exposes a near-full SQL Server engine surface area,
+    including CLR assemblies, SQL Agent jobs, Service Broker, linked servers, cross-database
+    queries, and replication — features absent in Azure SQL Database. This significantly
+    increases potential migration complexity compared to a standard Azure SQL DB migration.
+
+# ============================================================
+# COMPLEXITY THRESHOLDS
+# Determines overall complexity band per dimension
+# ============================================================
+complexity_thresholds:
+  tables:
+    simple:       { max: 50 }
+    medium:       { min: 51,  max: 150 }
+    complex:      { min: 151, max: 300 }
+    very_complex: { min: 301 }
+
+  stored_procedures:
+    simple:       { max: 20 }
+    medium:       { min: 21,  max: 100 }
+    complex:      { min: 101, max: 300 }
+    very_complex: { min: 301 }
+
+  triggers:
+    simple:       { max: 10 }
+    medium:       { min: 11,  max: 50 }
+    complex:      { min: 51,  max: 150 }
+    very_complex: { min: 151 }
+
+  views:
+    simple:       { max: 20 }
+    medium:       { min: 21,  max: 75 }
+    complex:      { min: 76,  max: 200 }
+    very_complex: { min: 201 }
+
+  database_size_gb:
+    simple:       { max: 100 }
+    medium:       { min: 101,  max: 500 }
+    complex:      { min: 501,  max: 2000 }
+    very_complex: { min: 2001 }
+
+  connected_applications:
+    simple:       { max: 2 }
+    medium:       { min: 3,  max: 7 }
+    complex:      { min: 8,  max: 15 }
+    very_complex: { min: 16 }
+
+# ============================================================
+# T-SQL FEATURE COMPLEXITY SCORING
+# Each T-SQL feature used adds to the overall complexity score
+# ============================================================
+tsql_feature_weights:
+  # High complexity – require significant PL/pgSQL rewrite
+  cursors:                    { weight: 15, description: "CURSOR-based row-by-row processing" }
+  linked_servers:             { weight: 20, description: "Linked server / OPENROWSET calls" }
+  xml_data_type:              { weight: 12, description: "XML columns and FOR XML queries" }
+  full_text_search:           { weight: 18, description: "CONTAINS / FREETEXT full-text search" }
+  spatial_data:               { weight: 15, description: "Geography / Geometry spatial types" }
+  clr_assemblies:             { weight: 25, description: "SQL CLR assemblies" }
+  replication:                { weight: 20, description: "Transactional / merge replication" }
+  service_broker:             { weight: 22, description: "Service Broker message queuing" }
+  reporting_services:         { weight: 10, description: "SSRS reports querying SQL directly" }
+  sql_agent_jobs:             { weight: 10, description: "SQL Server Agent scheduled jobs" }
+
+  # Medium complexity – need adaptation
+  temp_tables:                { weight: 5,  description: "Heavy #temp table / ##global temp usage" }
+  table_valued_parameters:    { weight: 8,  description: "User-defined table types / TVPs" }
+  json_support:               { weight: 6,  description: "FOR JSON / JSON_VALUE functions" }
+  dynamic_sql:                { weight: 8,  description: "EXEC / sp_executesql dynamic SQL" }
+  merge_statement:            { weight: 6,  description: "MERGE (upsert) statements" }
+  cte_recursive:              { weight: 4,  description: "Recursive CTEs" }
+  partition_tables:           { weight: 8,  description: "Table / index partitioning" }
+  row_level_security:         { weight: 10, description: "Row-level security policies" }
+  always_encrypted:           { weight: 12, description: "Always Encrypted columns" }
+  indexed_views:              { weight: 8,  description: "Indexed (materialized) views" }
+  computed_columns:           { weight: 4,  description: "Persisted computed columns" }
+  hierarchyid:                { weight: 10, description: "HierarchyID data type" }
+  filestream:                 { weight: 15, description: "FILESTREAM / FileTable storage" }
+  openquery:                  { weight: 12, description: "OPENQUERY distributed queries" }
+
+  # Low complexity – minor syntax changes
+  identity_columns:           { weight: 2,  description: "IDENTITY → SERIAL/SEQUENCE" }
+  top_clause:                 { weight: 1,  description: "TOP N → LIMIT N" }
+  isnull_coalesce:            { weight: 1,  description: "ISNULL → COALESCE" }
+  getdate:                    { weight: 1,  description: "GETDATE() → NOW()" }
+  string_functions:           { weight: 2,  description: "LEN→LENGTH, CHARINDEX→POSITION, etc." }
+  error_handling:             { weight: 3,  description: "TRY/CATCH → EXCEPTION block" }
+  nolock_hints:               { weight: 2,  description: "WITH(NOLOCK) hint removal" }
+
+# ============================================================
+# DATA TYPE MAPPING COMPLEXITY
+# ============================================================
+datatype_migration_weights:
+  uniqueidentifier:   { weight: 2,  pg_equivalent: "UUID",        note: "Minor syntax differences" }
+  datetime:           { weight: 2,  pg_equivalent: "TIMESTAMP",   note: "Minor formatting differences" }
+  smalldatetime:      { weight: 1,  pg_equivalent: "TIMESTAMP",   note: "Direct mapping" }
+  nvarchar_max:       { weight: 2,  pg_equivalent: "TEXT",        note: "Collation considerations" }
+  varbinary_max:      { weight: 3,  pg_equivalent: "BYTEA",       note: "Encoding changes needed" }
+  sql_variant:        { weight: 10, pg_equivalent: "N/A",         note: "No direct equivalent – redesign required" }
+  xml:                { weight: 8,  pg_equivalent: "XML",         note: "Function rewrites required" }
+  geography:          { weight: 15, pg_equivalent: "PostGIS",     note: "PostGIS extension required" }
+  geometry:           { weight: 15, pg_equivalent: "PostGIS",     note: "PostGIS extension required" }
+  hierarchyid:        { weight: 10, pg_equivalent: "ltree/custom",note: "Extension or custom implementation" }
+  rowversion:         { weight: 4,  pg_equivalent: "xmin/custom", note: "Application logic change" }
+  money:              { weight: 2,  pg_equivalent: "NUMERIC(19,4)",note: "Direct numeric mapping" }
+  tinyint:            { weight: 1,  pg_equivalent: "SMALLINT",    note: "Direct mapping" }
+  bit:                { weight: 1,  pg_equivalent: "BOOLEAN",     note: "True/false mapping" }
+  image:              { weight: 5,  pg_equivalent: "BYTEA",       note: "Deprecated type – requires migration" }
+  text_ntext:         { weight: 5,  pg_equivalent: "TEXT",        note: "Deprecated type – collation check" }
+
+# ============================================================
+# WORKSTREAM EFFORT MATRIX (Person-Days)
+# Base effort per complexity band, before multipliers
+# ============================================================
+workstream_effort_matrix:
+  discovery_assessment:
+    label: "Discovery & Assessment"
+    description: "Current-state analysis, dependency mapping, risk identification"
+    simple:       5
+    medium:       10
+    complex:      18
+    very_complex: 30
+    risk_buffer_pct: 10
+
+  schema_migration:
+    label: "Schema Migration (DDL)"
+    description: "Tables, indexes, constraints, sequences, collations"
+    simple:       3
+    medium:       8
+    complex:      20
+    very_complex: 45
+    risk_buffer_pct: 15
+
+  sp_functions_triggers:
+    label: "Stored Procedures / Functions / Triggers"
+    description: "T-SQL to PL/pgSQL conversion; logic rewrites"
+    simple:       5
+    medium:       25
+    complex:      65
+    very_complex: 130
+    risk_buffer_pct: 25
+
+  views_migration:
+    label: "Views Migration"
+    description: "Standard and indexed (materialized) views conversion"
+    simple:       2
+    medium:       6
+    complex:      15
+    very_complex: 30
+    risk_buffer_pct: 15
+
+  data_migration:
+    label: "Data Migration & Validation"
+    description: "ETL pipeline setup, full load, CDC, reconciliation"
+    simple:       4
+    medium:       10
+    complex:      20
+    very_complex: 40
+    risk_buffer_pct: 20
+
+  application_changes:
+    label: "Application Layer Changes"
+    description: "Driver updates, ORM config, query rewrites, connection strings"
+    simple:       5
+    medium:       18
+    complex:      40
+    very_complex: 80
+    risk_buffer_pct: 20
+
+  infrastructure_setup:
+    label: "AWS Infrastructure Setup"
+    description: "Aurora cluster, VPC, security groups, parameter groups, IAM, monitoring"
+    simple:       5
+    medium:       8
+    complex:      14
+    very_complex: 22
+    risk_buffer_pct: 10
+
+  security_compliance:
+    label: "Security & Compliance"
+    description: "IAM roles, encryption at rest/transit, audit logging, compliance mapping"
+    simple:       3
+    medium:       6
+    complex:      12
+    very_complex: 22
+    risk_buffer_pct: 15
+
+  testing_validation:
+    label: "Testing & Validation"
+    description: "Unit, integration, performance, regression, UAT"
+    simple:       5
+    medium:       15
+    complex:      35
+    very_complex: 65
+    risk_buffer_pct: 20
+
+  cutover_planning:
+    label: "Cutover Planning & Execution"
+    description: "Runbook, rollback plan, rehearsal, DNS/connection switchover"
+    simple:       3
+    medium:       6
+    complex:      12
+    very_complex: 22
+    risk_buffer_pct: 15
+
+  post_migration_support:
+    label: "Post-Migration Hypercare Support"
+    description: "Monitoring, performance tuning, issue triage (30-day window)"
+    simple:       5
+    medium:       12
+    complex:      22
+    very_complex: 40
+    risk_buffer_pct: 10
+
+# ============================================================
+# GLOBAL COMPLEXITY MULTIPLIERS
+# Applied on top of workstream base estimates
+# ============================================================
+global_multipliers:
+  high_availability_required:       { factor: 1.10, description: "Multi-AZ Aurora setup and failover testing" }
+  compliance_requirements:          { factor: 1.15, description: "HIPAA, PCI-DSS, SOC2, GDPR compliance" }
+  zero_downtime_cutover:            { factor: 1.20, description: "Live CDC-based cutover with <1hr RTO" }
+  multiple_environments:            { factor: 1.10, description: "Dev, QA, Staging, Prod environments" }
+  parallel_run_required:            { factor: 1.15, description: "Side-by-side run for validation period" }
+  third_party_etl_tools:            { factor: 0.90, description: "Using AWS DMS / SCT reduces manual effort" }
+  experienced_team:                 { factor: 0.85, description: "Team with prior Azure SQL → PostgreSQL experience" }
+  no_documentation_available:       { factor: 1.20, description: "No schema docs; discovery effort increases" }
+  active_development_during_migration: { factor: 1.25, description: "Source schema changes during migration" }
+
+# ============================================================
+# STAFFING ASSUMPTIONS
+# ============================================================
+staffing:
+  working_days_per_week: 5
+  working_hours_per_day: 8
+  team_roles:
+    - role: "Migration Lead / Architect"
+      allocation_pct: 100
+    - role: "Database Developer (T-SQL/PL-pgSQL)"
+      allocation_pct: 100
+    - role: "Data Engineer (ETL/DMS)"
+      allocation_pct: 100
+    - role: "AWS Infrastructure Engineer"
+      allocation_pct: 75
+    - role: "Application Developer"
+      allocation_pct: 50
+    - role: "QA / Test Engineer"
+      allocation_pct: 75
+    - role: "Project Manager"
+      allocation_pct: 25
+  contingency_buffer_pct: 20
+
+# ============================================================
+# AWS TOOLS & SERVICES REFERENCE
+# ============================================================
+aws_tools:
+  schema_conversion:
+    - name: "AWS Schema Conversion Tool (SCT)"
+      purpose: "Automated DDL and SP conversion from SQL Server to PostgreSQL"
+      effort_reduction_pct: 30
+    - name: "AWS Database Migration Service (DMS)"
+      purpose: "Full load + CDC data migration"
+      effort_reduction_pct: 40
+
+  target_service:
+    name: "Amazon Aurora PostgreSQL-Compatible"
+    recommended_version: "15.x"
+    notable_features:
+      - "Up to 5x throughput vs standard PostgreSQL"
+      - "Aurora Serverless v2 for variable workloads"
+      - "Global Database for multi-region"
+      - "Parallel Query for analytics"
+      - "Babelfish for partial T-SQL compatibility"
+
+  monitoring:
+    - "Amazon CloudWatch"
+    - "AWS Performance Insights"
+    - "Amazon DevOps Guru for RDS"
+    - "pgBadger (log analysis)"
+
+  migration_phases:
+    - phase: 1
+      name: "Assess & Plan"
+      tools: ["AWS SCT", "Database Migration Assessment Report"]
+    - phase: 2
+      name: "Convert & Test (Non-Prod)"
+      tools: ["AWS SCT", "AWS DMS", "Aurora PostgreSQL Dev"]
+    - phase: 3
+      name: "Data Migration & Validation"
+      tools: ["AWS DMS", "Custom validation scripts"]
+    - phase: 4
+      name: "Application Migration"
+      tools: ["pgJDBC", "psycopg2", "ODBC", "npgsql"]
+    - phase: 5
+      name: "Cutover & Go-Live"
+      tools: ["AWS DMS CDC", "Route 53", "CloudWatch Alarms"]
+    - phase: 6
+      name: "Optimize & Decommission"
+      tools: ["Performance Insights", "pg_stat_statements", "Aurora Auto Scaling"]
